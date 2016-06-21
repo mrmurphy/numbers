@@ -9,7 +9,7 @@
     "url": "https://github.com/moarwick/elm-webpack-starter"
   },
   "scripts": {
-    "start": "webpack-dev-server --hot --inline --content-base src/",
+    "start": "webpack-dev-server --hot --inline --port 1339 --content-base src/",
     "build": "rimraf dist && webpack",
     "watch": "webpack --watch"
   },
