@@ -9,6 +9,7 @@ module.exports = {
 */
 var config = require('./secrets/firebase-config.js')
 var auth = require('./js/auth')
+console.log(config)
 
 // Initialize Firebase
 firebase.initializeApp(config);
@@ -20,5 +21,8 @@ require( './styles/main.scss' );
 var Elm = require( './Main' );
 var app = Elm.Main.embed( document.getElementById( 'main' ) );
 
-app.ports.signIn.subscribe(auth.signIn.bind(null, app, config.email))
+app.ports.logIn.subscribe(auth.signIn.bind(null, app, config.email))
+setTimeout(() => {
+  app.ports.loginError.send('test')
+}, 10)
 firebase.auth().onAuthStateChanged(auth.onStateChanged.bind(null, app))
