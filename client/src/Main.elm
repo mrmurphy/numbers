@@ -1,26 +1,37 @@
 port module Main exposing (..)
 
+import Layout exposing (layout)
 import Html exposing (..)
-import Html.Attributes exposing (..)
 import Html.App
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
 import Pages.Login as Login
+import Navigation
+import Router
+import String
+import Dict
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ loggedIn LoggedIn
-        , loginError LoginError
+        , Sub.map LoginMsg (Login.subscriptions model.login)
         ]
-
-
-port logIn : String -> Cmd msg
 
 
 port loggedIn : (Bool -> msg) -> Sub msg
 
 
-port loginError : (String -> msg) -> Sub msg
+port logOut : () -> Cmd msg
+
+
+urlUpdate urlInfo model =
+    let
+        ( routerModel, routerCmds ) =
+            Router.urlUpdate urlInfo model.router
+    in
+        { model | router = routerModel } ! [ Cmd.map RouterMsg routerCmds ]
 
 
 
@@ -29,10 +40,11 @@ port loginError : (String -> msg) -> Sub msg
 
 main : Program Never
 main =
-    Html.App.program
-        { init = model ! []
+    Navigation.program Router.urlParser
+        { init = init
         , view = view
         , update = update
+        , urlUpdate = urlUpdate
         , subscriptions = subscriptions
         }
 
@@ -43,16 +55,22 @@ main =
 
 type alias Model =
     { loggedIn : Bool
-    , password : String
-    , loginError : Maybe String
+    , router : Router.Model
+    , login : Login.Model
     }
 
 
-model =
-    { loggedIn = False
-    , password = ""
-    , loginError = Nothing
-    }
+init routeInfo =
+    let
+        ( routerModel, routerCmds ) =
+            Router.init routeInfo
+    in
+        { loggedIn = False
+        , router = routerModel
+        , login = Login.init
+        }
+            ! [ Cmd.map RouterMsg routerCmds
+              ]
 
 
 
@@ -62,9 +80,9 @@ model =
 type Msg
     = NoOp
     | LoggedIn Bool
-    | UpdatePassword String
-    | LogIn String
-    | LoginError String
+    | LogOut
+    | LoginMsg Login.Msg
+    | RouterMsg Router.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -74,20 +92,65 @@ update msg model =
             model ! []
 
         LoggedIn val ->
-            { model | loggedIn = val } ! []
+            { model | loggedIn = val }
+                ! [ if not val then
+                        Navigation.modifyUrl <| "/#login?redirectTo=" ++ (String.join "/" model.router.location.path)
+                    else
+                        case String.join "" model.router.location.path of
+                            "login" ->
+                                Navigation.modifyUrl "/"
 
-        LogIn pw ->
-            model ! [ logIn pw ]
+                            _ ->
+                                case Dict.get "redirectTo" model.router.location.query of
+                                    Just path ->
+                                        let
+                                            path' =
+                                                case path of
+                                                    "" ->
+                                                        "/"
 
-        UpdatePassword pw ->
-            { model | password = pw } ! []
+                                                    other ->
+                                                        other
+                                        in
+                                            Navigation.modifyUrl (Debug.log "logged in, going to path" path')
 
-        LoginError str ->
-            { model | loginError = Just str } ! []
+                                    Nothing ->
+                                        Cmd.none
+                  ]
+
+        LoginMsg msg' ->
+            let
+                ( m, c ) =
+                    Login.update msg' model.login
+            in
+                { model | login = m } ! [ Cmd.map LoginMsg c ]
+
+        LogOut ->
+            model ! [ logOut () ]
+
+        RouterMsg msg ->
+            let
+                ( rMdl, rCmd ) =
+                    Router.update msg model.router
+            in
+                { model | router = rMdl } ! [ Cmd.map RouterMsg rCmd ]
 
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ Login.view { model = model, onSubmit = LogIn model.password, onUpdate = UpdatePassword }
-        ]
+    layout { onLogout = LogOut, model = model }
+        <| case model.router.route of
+            Router.MainRoute ->
+                div []
+                    [ text "WELCOME yEAAH"
+                    , button [ class "button", onClick LogOut ] [ text "Log Out!" ]
+                    , text <| toString model
+                    ]
+
+            Router.LoginRoute ->
+                div []
+                    [ Html.App.map LoginMsg <| Login.view model.login
+                    ]
+
+            Router.NotFoundRoute ->
+                div [] [ text "404" ]
